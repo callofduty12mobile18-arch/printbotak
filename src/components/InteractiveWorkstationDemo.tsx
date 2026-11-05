@@ -203,6 +203,24 @@ export const InteractiveWorkstationDemo: React.FC = () => {
     };
 
     setJobs((prev) => [newJob, ...prev]);
+    // Show the result immediately so the simulated order is visible to the operator.
+    setActiveTab('queue');
+  };
+
+  const tabOrder = ['queue', 'printers', 'qr', 'journal'] as const;
+  const handleTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, current: typeof tabOrder[number]) => {
+    const currentIndex = tabOrder.indexOf(current);
+    let nextIndex = currentIndex;
+    if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % tabOrder.length;
+    else if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + tabOrder.length) % tabOrder.length;
+    else if (event.key === 'Home') nextIndex = 0;
+    else if (event.key === 'End') nextIndex = tabOrder.length - 1;
+    else return;
+
+    event.preventDefault();
+    const nextTab = tabOrder[nextIndex];
+    setActiveTab(nextTab);
+    document.getElementById(`workstation-tab-${nextTab}`)?.focus();
   };
 
   return (
@@ -244,10 +262,16 @@ export const InteractiveWorkstationDemo: React.FC = () => {
 
       {/* Navigation Sub-bar */}
       <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-1 overflow-x-auto py-0.5">
+        <div className="flex items-center gap-1 overflow-x-auto py-0.5" role="tablist" aria-label="Workstation views">
           <button
             onClick={() => setActiveTab('queue')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+            role="tab"
+            id="workstation-tab-queue"
+            aria-controls="workstation-panel"
+            aria-selected={activeTab === 'queue'}
+            tabIndex={activeTab === 'queue' ? 0 : -1}
+            onKeyDown={(event) => handleTabKeyDown(event, 'queue')}
+            className={`px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
               activeTab === 'queue'
                 ? 'bg-blue-600 text-white shadow-sm'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
@@ -264,7 +288,13 @@ export const InteractiveWorkstationDemo: React.FC = () => {
 
           <button
             onClick={() => setActiveTab('printers')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+            role="tab"
+            id="workstation-tab-printers"
+            aria-controls="workstation-panel"
+            aria-selected={activeTab === 'printers'}
+            tabIndex={activeTab === 'printers' ? 0 : -1}
+            onKeyDown={(event) => handleTabKeyDown(event, 'printers')}
+            className={`px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
               activeTab === 'printers'
                 ? 'bg-blue-600 text-white shadow-sm'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
@@ -276,7 +306,13 @@ export const InteractiveWorkstationDemo: React.FC = () => {
 
           <button
             onClick={() => setActiveTab('qr')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+            role="tab"
+            id="workstation-tab-qr"
+            aria-controls="workstation-panel"
+            aria-selected={activeTab === 'qr'}
+            tabIndex={activeTab === 'qr' ? 0 : -1}
+            onKeyDown={(event) => handleTabKeyDown(event, 'qr')}
+            className={`px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
               activeTab === 'qr'
                 ? 'bg-blue-600 text-white shadow-sm'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
@@ -288,7 +324,13 @@ export const InteractiveWorkstationDemo: React.FC = () => {
 
           <button
             onClick={() => setActiveTab('journal')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+            role="tab"
+            id="workstation-tab-journal"
+            aria-controls="workstation-panel"
+            aria-selected={activeTab === 'journal'}
+            tabIndex={activeTab === 'journal' ? 0 : -1}
+            onKeyDown={(event) => handleTabKeyDown(event, 'journal')}
+            className={`px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
               activeTab === 'journal'
                 ? 'bg-blue-600 text-white shadow-sm'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
@@ -311,6 +353,13 @@ export const InteractiveWorkstationDemo: React.FC = () => {
 
       {/* Main Workstation View Area */}
       <div className="p-4 sm:p-6 min-h-[380px] bg-slate-50/50">
+        <div
+          key={activeTab}
+          id="workstation-panel"
+          role="tabpanel"
+          aria-labelledby={`workstation-tab-${activeTab}`}
+          className="workstation-tab-panel"
+        >
         
         {/* TAB 1: Operator Queue */}
         {activeTab === 'queue' && (
@@ -573,6 +622,8 @@ export const InteractiveWorkstationDemo: React.FC = () => {
             </p>
           </div>
         )}
+
+        </div>
 
       </div>
 

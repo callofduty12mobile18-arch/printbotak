@@ -18,11 +18,11 @@ interface AboutPageProps {
 
 export const AboutPage: React.FC<AboutPageProps> = ({ navigate, onOpenDownloadModal }) => {
   return (
-    <div className="w-full bg-slate-50 pt-28 pb-20">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-20 text-slate-900">
+    <div className="about-page w-full bg-slate-50 pt-24 pb-16">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12 text-slate-900">
         
         {/* Header */}
-        <div className="text-center max-w-3xl mx-auto space-y-4">
+        <div className="page-heading text-center max-w-3xl mx-auto">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-xs font-semibold uppercase tracking-wider">
             Our Purpose & Mission
           </div>
@@ -35,7 +35,7 @@ export const AboutPage: React.FC<AboutPageProps> = ({ navigate, onOpenDownloadMo
         </div>
 
         {/* Story / Origin */}
-        <div className="max-w-4xl mx-auto p-8 sm:p-10 rounded-3xl bg-white border border-slate-200 shadow-sm space-y-6">
+        <div className="max-w-4xl mx-auto p-6 sm:p-8 rounded-3xl bg-white border border-slate-200 shadow-sm space-y-4">
           <h2 className="text-2xl font-bold text-slate-900 tracking-tight">
             The Reality of the Walk-In Xerox Counter
           </h2>
@@ -53,7 +53,7 @@ export const AboutPage: React.FC<AboutPageProps> = ({ navigate, onOpenDownloadMo
         </div>
 
         {/* Engineering Principles */}
-        <div className="max-w-5xl mx-auto space-y-8">
+        <div className="max-w-5xl mx-auto space-y-6">
           <div className="text-center">
             <h3 className="text-2xl font-bold text-slate-900 tracking-tight">
               Our Core Principles

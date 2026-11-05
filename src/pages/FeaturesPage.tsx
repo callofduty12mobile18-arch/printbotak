@@ -22,11 +22,11 @@ interface FeaturesPageProps {
 
 export const FeaturesPage: React.FC<FeaturesPageProps> = ({ navigate, onOpenDownloadModal }) => {
   return (
-    <div className="w-full bg-slate-50 pt-28 pb-20">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-24 text-slate-900">
+    <div className="w-full bg-slate-50 pt-24 pb-20">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12 text-slate-900">
         
         {/* Header */}
-        <div className="text-center max-w-3xl mx-auto space-y-4">
+        <div className="page-heading text-center max-w-3xl mx-auto">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-xs font-semibold uppercase tracking-wider">
             Architecture & Capabilities
           </div>
@@ -346,7 +346,7 @@ export const FeaturesPage: React.FC<FeaturesPageProps> = ({ navigate, onOpenDown
         </section>
 
         {/* Call to action banner */}
-        <div className="p-10 rounded-3xl bg-gradient-to-r from-blue-600 to-indigo-700 text-white text-center space-y-4 shadow-xl">
+        <div className="p-10 rounded-3xl bg-slate-900 text-white text-center space-y-4 shadow-xl">
           <h3 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
             Experience Modern Walk-In Document Printing
           </h3>

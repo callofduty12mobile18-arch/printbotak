@@ -24,23 +24,12 @@ export const DownloadModal: React.FC<DownloadModalProps> = ({
     return selectedArtifact || DOWNLOAD_CONFIG.artifacts[0];
   });
   const [copied, setCopied] = useState(false);
-  const [hasTriggered, setHasTriggered] = useState(false);
 
   useEffect(() => {
     if (selectedArtifact) {
       setArtifact(selectedArtifact);
     }
   }, [selectedArtifact]);
-
-  useEffect(() => {
-    if (isOpen && !hasTriggered) {
-      triggerInstallerDownload(artifact);
-      setHasTriggered(true);
-    }
-    if (!isOpen) {
-      setHasTriggered(false);
-    }
-  }, [isOpen, artifact, hasTriggered]);
 
   // Handle ESC key
   useEffect(() => {
@@ -85,7 +74,7 @@ export const DownloadModal: React.FC<DownloadModalProps> = ({
             </div>
             <div>
               <h3 id="download-modal-title" className="text-lg font-bold text-slate-900 tracking-tight">
-                Downloading Print Bot for Windows
+                Download Print Bot for Windows
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
                 Version {DOWNLOAD_CONFIG.currentVersion} • x86_64 Architecture • {artifact.filesize}
@@ -113,7 +102,7 @@ export const DownloadModal: React.FC<DownloadModalProps> = ({
               </div>
               <div className="text-xs text-emerald-700 font-medium flex items-center gap-1.5 pt-0.5">
                 <Check className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Download initiated automatically</span>
+                <span>Choose Download to save this package</span>
               </div>
             </div>
             <button

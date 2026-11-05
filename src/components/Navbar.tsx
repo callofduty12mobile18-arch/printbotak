@@ -29,7 +29,6 @@ export const Navbar: React.FC<NavbarProps> = ({ currentPath, navigate, onOpenDow
   const navLinks = [
     { label: 'Home', path: '/' },
     { label: 'Features', path: '/features' },
-    { label: 'Download', path: '/download' },
     { label: 'About', path: '/about' },
     { label: 'Contact', path: '/contact' },
   ];
@@ -37,7 +36,6 @@ export const Navbar: React.FC<NavbarProps> = ({ currentPath, navigate, onOpenDow
   const handleNavClick = (path: string) => {
     navigate(path);
     setMobileMenuOpen(false);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleDownload = () => {
@@ -65,7 +63,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentPath, navigate, onOpenDow
             className="flex items-center gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded-lg group cursor-pointer"
             aria-label="Print Bot Home"
           >
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20 group-hover:scale-105 transition-transform duration-200">
+            <div className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center text-white shadow-md shadow-slate-900/15 group-hover:scale-105 transition-transform duration-200">
               <Printer className="w-5 h-5" />
             </div>
             <div>
@@ -84,7 +82,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentPath, navigate, onOpenDow
           </button>
 
           {/* Desktop Navigation Links */}
-          <nav className="hidden md:flex items-center gap-1 bg-slate-100/80 border border-slate-200/70 rounded-full p-1.5 backdrop-blur-md">
+          <nav className="hidden md:flex items-center gap-1">
             {navLinks.map((link) => {
               const isActive = currentPath === link.path;
               return (
@@ -93,8 +91,8 @@ export const Navbar: React.FC<NavbarProps> = ({ currentPath, navigate, onOpenDow
                   onClick={() => handleNavClick(link.path)}
                   className={`px-4 py-1.5 text-sm font-medium rounded-full transition-all duration-200 cursor-pointer ${
                     isActive
-                      ? 'bg-white text-blue-600 shadow-sm font-semibold'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                    ? 'text-slate-900 font-semibold'
+                      : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
                   {link.label}
@@ -108,7 +106,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentPath, navigate, onOpenDow
             {/* Primary Download CTA */}
             <button
               onClick={handleDownload}
-              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md shadow-blue-500/20 hover:shadow-blue-500/30 transition-all duration-200 active:scale-[0.98] cursor-pointer"
+              className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-full shadow-md shadow-slate-900/10 transition-all duration-200 active:scale-[0.98] cursor-pointer"
             >
               <Download className="w-4 h-4" />
               <span>Download</span>
@@ -164,18 +162,6 @@ export const Navbar: React.FC<NavbarProps> = ({ currentPath, navigate, onOpenDow
             })}
           </div>
 
-          <div className="pt-2 border-t border-slate-100 grid gap-2">
-            <button
-              onClick={() => {
-                setMobileMenuOpen(false);
-                handleDownload();
-              }}
-              className="w-full py-2.5 px-4 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl flex items-center justify-center gap-2 shadow-md shadow-blue-500/20"
-            >
-              <Download className="w-4 h-4" />
-              <span>Download Print Bot for Windows</span>
-            </button>
-          </div>
         </div>
       )}
     </header>
