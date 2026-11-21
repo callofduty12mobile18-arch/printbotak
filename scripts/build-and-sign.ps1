@@ -38,9 +38,12 @@ Set-Location "d:\print bot\apps\desktop"
 pnpm tauri build --bundles nsis
 
 # 3. Verify / Re-sign Installer
-$installerPath = "d:\print bot\apps\desktop\src-tauri\target\release\bundle\nsis\Print Bot_1.0.0_x64-setup.exe"
-if (Test-Path $installerPath) {
-    Write-Host "[3/4] Signing installer with timestamp..." -ForegroundColor Yellow
+$nsisDir = "d:\print bot\apps\desktop\src-tauri\target\release\bundle\nsis"
+$matched = Get-ChildItem -Path $nsisDir -Filter "*setup.exe" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+$installerPath = if ($matched) { $matched.FullName } else { $null }
+
+if ($installerPath -and (Test-Path $installerPath)) {
+    Write-Host "[3/4] Signing installer with timestamp: $installerPath" -ForegroundColor Yellow
     if ($signtool) {
         & $signtool sign /fd SHA256 /sha1 $Thumbprint /tr $TimestampUrl /td SHA256 $installerPath
     }
@@ -55,7 +58,7 @@ if (Test-Path $installerPath) {
     Copy-Item $installerPath "d:\print bot\public\downloads\Print-Bot-1.0.0-x64-Setup.exe" -Force
     Write-Host "[4/4] Single professional executable ready at: d:\print bot\PrintBot-Setup.exe" -ForegroundColor Green
 } else {
-    Write-Error "Installer file not found at expected path: $installerPath"
+    Write-Error "Installer file not found in: $nsisDir"
 }
 
 Write-Host "=================================================================" -ForegroundColor Cyan

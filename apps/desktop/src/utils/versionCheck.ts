@@ -1,4 +1,4 @@
-export const CURRENT_DESKTOP_VERSION = '1.0.0';
+export const CURRENT_DESKTOP_VERSION = '1.0.1';
 
 export interface DesktopReleaseInfo {
   version: string;
