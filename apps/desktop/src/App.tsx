@@ -697,20 +697,42 @@ function ProductionApp() {
     const canonicalUsername = authRes.slug || u;
 
     let cloudOrderMode: 'MANUAL_APPROVAL' | 'FULL_AUTOMATIC' | undefined = undefined;
+    let cloudExpiresAt: string | undefined = undefined;
+    let cloudPlan: string | undefined = undefined;
     try {
       const { data: appRow } = await supabase
         .from('pilot_applications')
-        .select('notes')
+        .select('*')
         .or(`id.eq.${authRes.shop_id},generated_username.ilike.${canonicalUsername}`)
         .maybeSingle();
-      if (appRow?.notes) {
-        const parsedNotes = typeof appRow.notes === 'string' ? JSON.parse(appRow.notes) : appRow.notes;
-        if (parsedNotes?.orderMode === 'FULL_AUTOMATIC' || parsedNotes?.orderMode === 'MANUAL_APPROVAL') {
-          cloudOrderMode = parsedNotes.orderMode;
+      if (appRow) {
+        cloudPlan = appRow.plan;
+        if (appRow.notes) {
+          const parsedNotes = typeof appRow.notes === 'string' ? JSON.parse(appRow.notes) : appRow.notes;
+          if (parsedNotes?.orderMode === 'FULL_AUTOMATIC' || parsedNotes?.orderMode === 'MANUAL_APPROVAL') {
+            cloudOrderMode = parsedNotes.orderMode;
+          }
+          if (parsedNotes?.expiresAt) {
+            cloudExpiresAt = parsedNotes.expiresAt;
+          }
+        }
+
+        // If expiresAt was not explicitly in notes, compute from plan & applied_at/approved_at
+        if (!cloudExpiresAt && appRow.plan) {
+          const baseDate = appRow.applied_at || appRow.approved_at ? new Date(appRow.applied_at || appRow.approved_at) : new Date();
+          if (appRow.plan === '1 Month' || appRow.plan.includes('Month')) {
+            baseDate.setDate(baseDate.getDate() + 30);
+            cloudExpiresAt = baseDate.toISOString().split('T')[0];
+          } else if (appRow.plan === '1 Year' || appRow.plan.includes('Year')) {
+            baseDate.setFullYear(baseDate.getFullYear() + 1);
+            cloudExpiresAt = baseDate.toISOString().split('T')[0];
+          } else if (appRow.plan.includes('Lifetime')) {
+            cloudExpiresAt = 'LIFETIME';
+          }
         }
       }
     } catch (err) {
-      console.warn('Error reading cloud order mode during unlock:', err);
+      console.warn('Error reading cloud shop details during unlock:', err);
     }
 
     const resolvedOrderMode =
@@ -723,6 +745,17 @@ function ProductionApp() {
     const boundDeviceId = authRes.device_id || devIdentity.device_id;
     const boundDeviceName = authRes.device_name || devIdentity.device_name;
     const boundTimestamp = new Date().toISOString();
+
+    const existingLic = licenses[canonicalUsername] || licenses[u];
+    const resolvedExpiresAt =
+      cloudExpiresAt ||
+      (authRes.is_lifetime ? 'LIFETIME' : authRes.expires_at ? authRes.expires_at.split('T')[0] : null) ||
+      (existingLic?.expiresAt && existingLic.expiresAt !== 'EXPIRED' ? existingLic.expiresAt : null) ||
+      (() => {
+        const d = new Date();
+        d.setDate(d.getDate() + 30);
+        return d.toISOString().split('T')[0];
+      })();
 
     const newLic: ShopLicense = {
       username: canonicalUsername,
@@ -739,9 +772,9 @@ function ProductionApp() {
       },
       orderMode: resolvedOrderMode,
       status: 'ACTIVE',
-      expiresAt: authRes.is_lifetime ? 'LIFETIME' : (authRes.expires_at ? authRes.expires_at.split('T')[0] : 'EXPIRED'),
+      expiresAt: resolvedExpiresAt,
       isConfigured: true,
-      duration: authRes.is_lifetime ? 'Lifetime Commercial' : (authRes.plan || '1 Year'),
+      duration: authRes.is_lifetime ? 'Lifetime Commercial' : (cloudPlan || authRes.plan || '1 Month'),
       deviceId: boundDeviceId,
       deviceName: boundDeviceName,
       deviceToken: authRes.device_token,
@@ -776,6 +809,7 @@ function ProductionApp() {
           spoolerArchitecture: 'Tauri 2.0 Native x86_64 Win32 Spooler',
           boundAt: parsedNotes.boundAt || boundTimestamp,
           lastActiveAt: boundTimestamp,
+          expiresAt: parsedNotes.expiresAt || resolvedExpiresAt,
         };
 
         await supabase
@@ -1736,6 +1770,8 @@ function ProductionApp() {
       duplexDiscountPercent: 15,
       orderMode: 'FULL_AUTOMATIC',
       issuedAt: new Date().toISOString(),
+      expiresAt: expiryStr,
+      duration: newDuration,
     });
 
     try {
@@ -1977,6 +2013,18 @@ function ProductionApp() {
             if (p.expiresAt) cloudExpiry = p.expiresAt;
           } catch {}
         }
+        if (!cloudExpiry && appRow.plan) {
+          const base = appRow.applied_at || appRow.approved_at ? new Date(appRow.applied_at || appRow.approved_at) : new Date();
+          if (appRow.plan === '1 Month' || appRow.plan.includes('Month')) {
+            base.setDate(base.getDate() + 30);
+            cloudExpiry = base.toISOString().split('T')[0];
+          } else if (appRow.plan === '1 Year' || appRow.plan.includes('Year')) {
+            base.setFullYear(base.getFullYear() + 1);
+            cloudExpiry = base.toISOString().split('T')[0];
+          } else if (appRow.plan.includes('Lifetime')) {
+            cloudExpiry = 'LIFETIME';
+          }
+        }
       }
 
       // 2. Fallback check via RPC
@@ -1995,7 +2043,19 @@ function ProductionApp() {
         } catch {}
       }
 
-      if (cloudExpiry && currentShop && cloudExpiry !== currentShop.expiresAt) {
+      // 3. Fallback from existing license if valid
+      if (!cloudExpiry && currentShop?.expiresAt && currentShop.expiresAt !== 'EXPIRED') {
+        cloudExpiry = currentShop.expiresAt;
+      }
+
+      // 4. Ultimate safety fallback for active approved license
+      if (!cloudExpiry && cloudStatus === 'ACTIVE') {
+        const d = new Date();
+        d.setDate(d.getDate() + 30);
+        cloudExpiry = d.toISOString().split('T')[0];
+      }
+
+      if (cloudExpiry && currentShop) {
         const updatedShop: ShopLicense = {
           ...currentShop,
           expiresAt: cloudExpiry,
@@ -2006,7 +2066,7 @@ function ProductionApp() {
           [currentShop.username]: updatedShop,
           [u]: updatedShop,
         }));
-        setNotice(`License successfully verified! Expiry extended to ${cloudExpiry}. Warning and countdown reset.`);
+        setNotice(`License successfully verified! Valid through ${cloudExpiry}.`);
         setShowCountdownModal(false);
       } else {
         setNotice(`License verified: Status is ${currentShop?.status || 'ACTIVE'}, valid through ${currentShop?.expiresAt || 'N/A'}.`);

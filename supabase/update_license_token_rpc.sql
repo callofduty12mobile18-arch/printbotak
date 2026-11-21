@@ -41,7 +41,15 @@ BEGIN
             'slug', v_record.generated_username,
             'device_id', TRIM(p_device_id),
             'device_name', COALESCE(p_device_name, 'Workstation 1'),
-            'device_token', v_token
+            'device_token', v_token,
+            'plan', v_record.plan,
+            'is_lifetime', (v_record.plan = 'Lifetime Commercial' OR v_record.plan ILIKE '%Lifetime%'),
+            'expires_at', CASE 
+                WHEN v_record.plan = '1 Month' THEN (COALESCE(v_record.applied_at, NOW()) + INTERVAL '30 days')
+                WHEN v_record.plan = '1 Year' THEN (COALESCE(v_record.applied_at, NOW()) + INTERVAL '365 days')
+                WHEN v_record.plan ILIKE '%Lifetime%' THEN (NOW() + INTERVAL '50 years')
+                ELSE (NOW() + INTERVAL '30 days')
+            END
         );
     END IF;
 
