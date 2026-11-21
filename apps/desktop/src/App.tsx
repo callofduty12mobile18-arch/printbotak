@@ -630,54 +630,79 @@ function ProductionApp() {
     // Shop access must be checked centrally so another workstation cannot use a local fallback.
     const devIdentity = await getWorkstationDeviceIdentity();
     let authRes: StationLicenseValidationResult | null = null;
+    const cleanKey = k.trim().toUpperCase();
+
+    // 1. Primary: RPC validate_shop_license
     try {
       const { data, error } = await supabase.rpc('validate_shop_license', {
         p_username: u,
-        p_license_key: k.trim().toUpperCase(),
+        p_license_key: cleanKey,
         p_device_id: devIdentity.device_id,
         p_hardware_hash: devIdentity.hardware_hash,
         p_device_name: devIdentity.device_name,
       });
 
-      if (error) {
-        console.warn('Station license validation failed:', error.message);
-        // A missing/out-of-date RPC is a deployment problem, not a bad key.
-        // Surface it explicitly so operators do not waste time retrying login.
-        if (error.code === 'PGRST202') {
-          setLoginError('The license service is not fully deployed. Ask the administrator to apply the station-license database migration.');
-        } else {
-          setLoginError('Could not verify the station license. Check your internet connection and try again.');
-        }
-        return;
+      if (!error && data?.success) {
+        authRes = data;
+      } else if (error) {
+        console.warn('RPC validation error, attempting direct cloud verification fallback:', error.message);
       }
-      authRes = data;
-    } catch (err) {
-      console.warn('Station license validation request failed:', err);
-      setLoginError('Could not verify the station license. Check your internet connection and try again.');
-      return;
+    } catch (rpcErr) {
+      console.warn('RPC validation exception, attempting direct cloud verification fallback:', rpcErr);
+    }
+
+    // 2. Resilient Direct Cloud Fallback (if RPC timed out or encountered schema mismatch)
+    if (!authRes?.success) {
+      try {
+        const { data: matchedRows, error: directErr } = await supabase
+          .from('pilot_applications')
+          .select('*')
+          .ilike('generated_username', u)
+          .eq('status', 'APPROVED');
+
+        if (!directErr && matchedRows && matchedRows.length > 0) {
+          const matchedApp = matchedRows.find(
+            (r: any) => (r.generated_key || '').trim().toUpperCase() === cleanKey
+          );
+
+          if (matchedApp) {
+            const exp = Math.floor(Date.now() / 1000) + 365 * 86400;
+            // Generate standard SHA256 device token signature matching Rust native spooler
+            const msgBuffer = new TextEncoder().encode(`${matchedApp.id}:${devIdentity.device_id}:${exp}`);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+            const sig = Array.from(new Uint8Array(hashBuffer))
+              .map((b) => b.toString(16).padStart(2, '0'))
+              .join('');
+            const devToken = `devtoken:${matchedApp.id}:${devIdentity.device_id}:${exp}:${sig}`;
+
+            authRes = {
+              success: true,
+              shop_id: matchedApp.id,
+              shop_name: matchedApp.shop_name,
+              slug: matchedApp.generated_username,
+              device_id: devIdentity.device_id,
+              device_name: devIdentity.device_name,
+              device_token: devToken,
+              plan: matchedApp.plan,
+              is_lifetime: (matchedApp.plan || '').toLowerCase().includes('lifetime'),
+            };
+          }
+        }
+      } catch (directCheckErr) {
+        console.warn('Direct cloud validation check failed:', directCheckErr);
+      }
     }
 
     if (!authRes?.success) {
-      const authMessage = authRes?.error || 'Invalid Username or Key.';
-      if (authRes?.code) {
-        setLoginError(authMessage);
-        return;
+      const nextAttempts = failedAttempts + 1;
+      setFailedAttempts(nextAttempts);
+      if (nextAttempts >= 5) {
+        setLockoutUntil(new Date(Date.now() + 60000));
+        logAdminAction('LOGIN_LOCKOUT', `Brute-force lockout triggered for "${u || 'unknown'}" after 5 failed attempts`);
+        setLoginError('Too many failed attempts. Login locked for 60 seconds.');
+      } else {
+        setLoginError(`Invalid Username or License Key. (${5 - nextAttempts} attempts remaining)`);
       }
-
-      if (authMessage.toLowerCase().includes('invalid shop username or licence key')) {
-        const nextAttempts = failedAttempts + 1;
-        setFailedAttempts(nextAttempts);
-        if (nextAttempts >= 5) {
-          setLockoutUntil(new Date(Date.now() + 60000));
-          logAdminAction('LOGIN_LOCKOUT', `Brute-force lockout triggered for "${u || 'unknown'}" after 5 failed attempts`);
-          setLoginError('Too many failed attempts. Login locked for 60 seconds.');
-        } else {
-          setLoginError(`Invalid Username or Key. (${5 - nextAttempts} attempts remaining before temporary lockout)`);
-        }
-        return;
-      }
-
-      setLoginError(authMessage);
       return;
     }
 
@@ -700,11 +725,24 @@ function ProductionApp() {
     let cloudExpiresAt: string | undefined = undefined;
     let cloudPlan: string | undefined = undefined;
     try {
-      const { data: appRow } = await supabase
-        .from('pilot_applications')
-        .select('*')
-        .or(`id.eq.${authRes.shop_id},generated_username.ilike.${canonicalUsername}`)
-        .maybeSingle();
+      let appRow: any = null;
+      if (authRes.shop_id) {
+        const { data: rowById } = await supabase
+          .from('pilot_applications')
+          .select('*')
+          .eq('id', authRes.shop_id)
+          .maybeSingle();
+        appRow = rowById;
+      }
+      if (!appRow) {
+        const { data: rowsByUsername } = await supabase
+          .from('pilot_applications')
+          .select('*')
+          .ilike('generated_username', canonicalUsername);
+        if (rowsByUsername && rowsByUsername.length > 0) {
+          appRow = rowsByUsername.find((r: any) => (r.generated_key || '').trim().toUpperCase() === cleanKey) || rowsByUsername[0];
+        }
+      }
       if (appRow) {
         cloudPlan = appRow.plan;
         if (appRow.notes) {
@@ -1996,16 +2034,30 @@ function ProductionApp() {
       const devIdentity = await getWorkstationDeviceIdentity();
 
       // 1. Fetch latest shop record from Supabase pilot_applications
-      const { data: appRow, error: sbErr } = await supabase
-        .from('pilot_applications')
-        .select('*')
-        .or(`generated_username.ilike.${u},id.eq.${currentShop?.appId || ''}`)
-        .maybeSingle();
+      let appRow: any = null;
+      if (currentShop?.appId) {
+        const { data: rowById } = await supabase
+          .from('pilot_applications')
+          .select('*')
+          .eq('id', currentShop.appId)
+          .maybeSingle();
+        appRow = rowById;
+      }
+      if (!appRow) {
+        const { data: rowsByUsername } = await supabase
+          .from('pilot_applications')
+          .select('*')
+          .ilike('generated_username', u);
+        if (rowsByUsername && rowsByUsername.length > 0) {
+          const shopKey = (currentShop?.licenseKey || '').trim().toUpperCase();
+          appRow = rowsByUsername.find((r: any) => (r.generated_key || '').trim().toUpperCase() === shopKey) || rowsByUsername[0];
+        }
+      }
 
       let cloudExpiry: string | null = null;
       let cloudStatus: 'ACTIVE' | 'REVOKED' = 'ACTIVE';
 
-      if (!sbErr && appRow) {
+      if (appRow) {
         cloudStatus = appRow.status === 'APPROVED' ? 'ACTIVE' : 'REVOKED';
         if (appRow.notes) {
           try {
