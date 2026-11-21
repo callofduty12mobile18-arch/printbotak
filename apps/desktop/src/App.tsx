@@ -1620,7 +1620,7 @@ function ProductionApp() {
     } catch {}
     return {
       version: '1.0.0',
-      downloadUrl: 'https://github.com/aravindan2004/print-bot-saas/raw/main/PrintBot-Setup.exe',
+      downloadUrl: 'https://raw.githubusercontent.com/callofduty12mobile18-arch/printbotak/main/public/downloads/PrintBot-Setup.exe',
       releaseNotes: 'Print Bot Workstation production release with Windows native spooling.',
       mandatory: false,
       publishedAt: '2026-11-21',

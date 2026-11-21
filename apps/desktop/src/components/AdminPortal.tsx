@@ -267,7 +267,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   // Desktop Release Auto-Update State
   const [releaseVersionDraft, setReleaseVersionDraft] = useState(desktopRelease?.version || '1.0.1');
   const [releaseUrlDraft, setReleaseUrlDraft] = useState(
-    desktopRelease?.downloadUrl || 'https://github.com/aravindan2004/print-bot-saas/raw/main/PrintBot-Setup.exe'
+    desktopRelease?.downloadUrl || 'https://raw.githubusercontent.com/callofduty12mobile18-arch/printbotak/main/public/downloads/PrintBot-Setup.exe'
   );
   const [releaseNotesDraft, setReleaseNotesDraft] = useState(
     desktopRelease?.releaseNotes || '- Automated 1-Click In-App Update flow\n- Performance enhancements and native Win32 fixes'
