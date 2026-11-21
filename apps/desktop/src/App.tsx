@@ -631,65 +631,65 @@ function ProductionApp() {
     const devIdentity = await getWorkstationDeviceIdentity();
     let authRes: StationLicenseValidationResult | null = null;
     const cleanKey = k.trim().toUpperCase();
+    let matchedRecord: any = null;
 
-    // 1. Primary: RPC validate_shop_license
+    // 1. Direct Cloud Lookup (Ultra-fast ~300ms, avoids multi-second RPC cold-starts)
     try {
-      const { data, error } = await supabase.rpc('validate_shop_license', {
-        p_username: u,
-        p_license_key: cleanKey,
-        p_device_id: devIdentity.device_id,
-        p_hardware_hash: devIdentity.hardware_hash,
-        p_device_name: devIdentity.device_name,
-      });
+      const { data: matchedRows, error: directErr } = await supabase
+        .from('pilot_applications')
+        .select('*')
+        .ilike('generated_username', u)
+        .eq('status', 'APPROVED');
 
-      if (!error && data?.success) {
-        authRes = data;
-      } else if (error) {
-        console.warn('RPC validation error, attempting direct cloud verification fallback:', error.message);
+      if (!directErr && matchedRows && matchedRows.length > 0) {
+        matchedRecord = matchedRows.find(
+          (r: any) => (r.generated_key || '').trim().toUpperCase() === cleanKey
+        );
       }
-    } catch (rpcErr) {
-      console.warn('RPC validation exception, attempting direct cloud verification fallback:', rpcErr);
+    } catch (directCheckErr) {
+      console.warn('Direct cloud validation check exception:', directCheckErr);
     }
 
-    // 2. Resilient Direct Cloud Fallback (if RPC timed out or encountered schema mismatch)
-    if (!authRes?.success) {
+    if (matchedRecord) {
+      const exp = Math.floor(Date.now() / 1000) + 365 * 86400;
+      // Generate standard SHA256 device token signature matching Rust native spooler
+      const msgBuffer = new TextEncoder().encode(`${matchedRecord.id}:${devIdentity.device_id}:${exp}`);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+      const sig = Array.from(new Uint8Array(hashBuffer))
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+      const devToken = `devtoken:${matchedRecord.id}:${devIdentity.device_id}:${exp}:${sig}`;
+
+      authRes = {
+        success: true,
+        shop_id: matchedRecord.id,
+        shop_name: matchedRecord.shop_name,
+        slug: matchedRecord.generated_username,
+        device_id: devIdentity.device_id,
+        device_name: devIdentity.device_name,
+        device_token: devToken,
+        plan: matchedRecord.plan,
+        is_lifetime: (matchedRecord.plan || '').toLowerCase().includes('lifetime'),
+      };
+    } else {
+      // 2. Resilient RPC Fallback with 3s timeout
       try {
-        const { data: matchedRows, error: directErr } = await supabase
-          .from('pilot_applications')
-          .select('*')
-          .ilike('generated_username', u)
-          .eq('status', 'APPROVED');
-
-        if (!directErr && matchedRows && matchedRows.length > 0) {
-          const matchedApp = matchedRows.find(
-            (r: any) => (r.generated_key || '').trim().toUpperCase() === cleanKey
-          );
-
-          if (matchedApp) {
-            const exp = Math.floor(Date.now() / 1000) + 365 * 86400;
-            // Generate standard SHA256 device token signature matching Rust native spooler
-            const msgBuffer = new TextEncoder().encode(`${matchedApp.id}:${devIdentity.device_id}:${exp}`);
-            const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-            const sig = Array.from(new Uint8Array(hashBuffer))
-              .map((b) => b.toString(16).padStart(2, '0'))
-              .join('');
-            const devToken = `devtoken:${matchedApp.id}:${devIdentity.device_id}:${exp}:${sig}`;
-
-            authRes = {
-              success: true,
-              shop_id: matchedApp.id,
-              shop_name: matchedApp.shop_name,
-              slug: matchedApp.generated_username,
-              device_id: devIdentity.device_id,
-              device_name: devIdentity.device_name,
-              device_token: devToken,
-              plan: matchedApp.plan,
-              is_lifetime: (matchedApp.plan || '').toLowerCase().includes('lifetime'),
-            };
-          }
+        const rpcPromise = supabase.rpc('validate_shop_license', {
+          p_username: u,
+          p_license_key: cleanKey,
+          p_device_id: devIdentity.device_id,
+          p_hardware_hash: devIdentity.hardware_hash,
+          p_device_name: devIdentity.device_name,
+        });
+        const timeoutPromise = new Promise<{ data: null; error: { message: string } }>((resolve) =>
+          setTimeout(() => resolve({ data: null, error: { message: 'RPC timeout' } }), 3000)
+        );
+        const { data, error } = await Promise.race([rpcPromise, timeoutPromise]);
+        if (!error && data?.success) {
+          authRes = data;
         }
-      } catch (directCheckErr) {
-        console.warn('Direct cloud validation check failed:', directCheckErr);
+      } catch (rpcErr) {
+        console.warn('RPC validation error:', rpcErr);
       }
     }
 
@@ -724,28 +724,13 @@ function ProductionApp() {
     let cloudOrderMode: 'MANUAL_APPROVAL' | 'FULL_AUTOMATIC' | undefined = undefined;
     let cloudExpiresAt: string | undefined = undefined;
     let cloudPlan: string | undefined = undefined;
-    try {
-      let appRow: any = null;
-      if (authRes.shop_id) {
-        const { data: rowById } = await supabase
-          .from('pilot_applications')
-          .select('*')
-          .eq('id', authRes.shop_id)
-          .maybeSingle();
-        appRow = rowById;
-      }
-      if (!appRow) {
-        const { data: rowsByUsername } = await supabase
-          .from('pilot_applications')
-          .select('*')
-          .ilike('generated_username', canonicalUsername);
-        if (rowsByUsername && rowsByUsername.length > 0) {
-          appRow = rowsByUsername.find((r: any) => (r.generated_key || '').trim().toUpperCase() === cleanKey) || rowsByUsername[0];
-        }
-      }
-      if (appRow) {
-        cloudPlan = appRow.plan;
-        if (appRow.notes) {
+
+    // Use record already in memory from direct lookup to avoid extra network latency
+    const appRow = matchedRecord;
+    if (appRow) {
+      cloudPlan = appRow.plan;
+      if (appRow.notes) {
+        try {
           const parsedNotes = typeof appRow.notes === 'string' ? JSON.parse(appRow.notes) : appRow.notes;
           if (parsedNotes?.orderMode === 'FULL_AUTOMATIC' || parsedNotes?.orderMode === 'MANUAL_APPROVAL') {
             cloudOrderMode = parsedNotes.orderMode;
@@ -753,24 +738,22 @@ function ProductionApp() {
           if (parsedNotes?.expiresAt) {
             cloudExpiresAt = parsedNotes.expiresAt;
           }
-        }
+        } catch {}
+      }
 
-        // If expiresAt was not explicitly in notes, compute from plan & applied_at/approved_at
-        if (!cloudExpiresAt && appRow.plan) {
-          const baseDate = appRow.applied_at || appRow.approved_at ? new Date(appRow.applied_at || appRow.approved_at) : new Date();
-          if (appRow.plan === '1 Month' || appRow.plan.includes('Month')) {
-            baseDate.setDate(baseDate.getDate() + 30);
-            cloudExpiresAt = baseDate.toISOString().split('T')[0];
-          } else if (appRow.plan === '1 Year' || appRow.plan.includes('Year')) {
-            baseDate.setFullYear(baseDate.getFullYear() + 1);
-            cloudExpiresAt = baseDate.toISOString().split('T')[0];
-          } else if (appRow.plan.includes('Lifetime')) {
-            cloudExpiresAt = 'LIFETIME';
-          }
+      // If expiresAt was not explicitly in notes, compute from plan & applied_at/approved_at
+      if (!cloudExpiresAt && appRow.plan) {
+        const baseDate = appRow.applied_at || appRow.approved_at ? new Date(appRow.applied_at || appRow.approved_at) : new Date();
+        if (appRow.plan === '1 Month' || appRow.plan.includes('Month')) {
+          baseDate.setDate(baseDate.getDate() + 30);
+          cloudExpiresAt = baseDate.toISOString().split('T')[0];
+        } else if (appRow.plan === '1 Year' || appRow.plan.includes('Year')) {
+          baseDate.setFullYear(baseDate.getFullYear() + 1);
+          cloudExpiresAt = baseDate.toISOString().split('T')[0];
+        } else if (appRow.plan.includes('Lifetime')) {
+          cloudExpiresAt = 'LIFETIME';
         }
       }
-    } catch (err) {
-      console.warn('Error reading cloud shop details during unlock:', err);
     }
 
     const resolvedOrderMode =
@@ -824,39 +807,35 @@ function ProductionApp() {
 
     setSetupOrderMode(resolvedOrderMode);
 
-    // Save bound PC identity and timestamp to Supabase Cloud Database so Super Admin can inspect it
+    // Save bound PC identity to Supabase in background (non-blocking to ensure instant login)
     if (authRes.shop_id) {
-      try {
-        const { data: existingApp } = await supabase
-          .from('pilot_applications')
-          .select('notes')
-          .eq('id', authRes.shop_id)
-          .maybeSingle();
+      (async () => {
+        try {
+          let parsedNotes: any = {};
+          if (appRow?.notes) {
+            try {
+              parsedNotes = typeof appRow.notes === 'string' ? JSON.parse(appRow.notes) : appRow.notes;
+            } catch {}
+          }
 
-        let parsedNotes: any = {};
-        if (existingApp?.notes) {
-          try {
-            parsedNotes = typeof existingApp.notes === 'string' ? JSON.parse(existingApp.notes) : existingApp.notes;
-          } catch {}
+          const mergedNotes = {
+            ...parsedNotes,
+            deviceId: boundDeviceId,
+            deviceName: boundDeviceName,
+            spoolerArchitecture: 'Tauri 2.0 Native x86_64 Win32 Spooler',
+            boundAt: parsedNotes.boundAt || boundTimestamp,
+            lastActiveAt: boundTimestamp,
+            expiresAt: parsedNotes.expiresAt || resolvedExpiresAt,
+          };
+
+          await supabase
+            .from('pilot_applications')
+            .update({ notes: JSON.stringify(mergedNotes) })
+            .eq('id', authRes.shop_id);
+        } catch (bindErr) {
+          console.warn('Failed to persist bound device info to Supabase in background:', bindErr);
         }
-
-        const mergedNotes = {
-          ...parsedNotes,
-          deviceId: boundDeviceId,
-          deviceName: boundDeviceName,
-          spoolerArchitecture: 'Tauri 2.0 Native x86_64 Win32 Spooler',
-          boundAt: parsedNotes.boundAt || boundTimestamp,
-          lastActiveAt: boundTimestamp,
-          expiresAt: parsedNotes.expiresAt || resolvedExpiresAt,
-        };
-
-        await supabase
-          .from('pilot_applications')
-          .update({ notes: JSON.stringify(mergedNotes) })
-          .eq('id', authRes.shop_id);
-      } catch (bindErr) {
-        console.warn('Failed to persist bound device info to Supabase:', bindErr);
-      }
+      })();
     }
 
     setLicenses((prev) => ({
