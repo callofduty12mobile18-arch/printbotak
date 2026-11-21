@@ -274,6 +274,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   );
   const [releaseMandatoryDraft, setReleaseMandatoryDraft] = useState(desktopRelease?.mandatory ?? false);
   const [isPublishingRelease, setIsPublishingRelease] = useState(false);
+  const [isSubmittingKey, setIsSubmittingKey] = useState(false);
+  const [isSavingBroadcast, setIsSavingBroadcast] = useState(false);
 
   // Shop Directory & Devices Drill-Down View State
   const [selectedShopUsername, setSelectedShopUsername] = useState<string | null>(null);
@@ -1064,7 +1066,17 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   </div>
                 </div>
 
-                <form onSubmit={handleGenerateKey}>
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    setIsSubmittingKey(true);
+                    try {
+                      await handleGenerateKey(e);
+                    } finally {
+                      setIsSubmittingKey(false);
+                    }
+                  }}
+                >
                   <div
                     style={{
                       display: 'grid',
@@ -1180,10 +1192,31 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                     <button
                       type="submit"
+                      disabled={isSubmittingKey}
                       className="pb-btn pb-btn-primary"
-                      style={{ height: '40px', padding: '0 24px', fontSize: '13px', fontWeight: 700 }}
+                      style={{
+                        height: '40px',
+                        padding: '0 24px',
+                        fontSize: '13px',
+                        fontWeight: 700,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        opacity: isSubmittingKey ? 0.75 : 1,
+                        cursor: isSubmittingKey ? 'not-allowed' : 'pointer',
+                      }}
                     >
-                      <PlusCircle size={15} /> Generate License Key
+                      {isSubmittingKey ? (
+                        <>
+                          <RefreshCw size={15} className="animate-spin" />
+                          <span>Generating Key & Syncing...</span>
+                        </>
+                      ) : (
+                        <>
+                          <PlusCircle size={15} />
+                          <span>Generate License Key</span>
+                        </>
+                      )}
                     </button>
                   </div>
                 </form>
@@ -3072,7 +3105,17 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   This banner message is instantly broadcast to all active shop workstation counters and customer checkout screens across the network.
                 </p>
 
-                <form onSubmit={handleSaveBroadcast}>
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    setIsSavingBroadcast(true);
+                    try {
+                      await handleSaveBroadcast(e);
+                    } finally {
+                      setIsSavingBroadcast(false);
+                    }
+                  }}
+                >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
                     <input
                       type="checkbox"
@@ -3126,10 +3169,31 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                     <button
                       type="submit"
+                      disabled={isSavingBroadcast}
                       className="pb-btn pb-btn-primary"
-                      style={{ height: '40px', padding: '0 24px', fontSize: '13px', fontWeight: 700 }}
+                      style={{
+                        height: '40px',
+                        padding: '0 24px',
+                        fontSize: '13px',
+                        fontWeight: 700,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        opacity: isSavingBroadcast ? 0.75 : 1,
+                        cursor: isSavingBroadcast ? 'not-allowed' : 'pointer',
+                      }}
                     >
-                      <Megaphone size={15} /> Publish Network Broadcast
+                      {isSavingBroadcast ? (
+                        <>
+                          <RefreshCw size={15} className="animate-spin" />
+                          <span>Publishing Broadcast...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Megaphone size={15} />
+                          <span>Publish Network Broadcast</span>
+                        </>
+                      )}
                     </button>
                   </div>
                 </form>
